@@ -1,0 +1,78 @@
+version: "3.5"
+
+services:
+
+  rabbit:
+    image: "rabbitmq:3-management"
+    restart: always
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      backend_network:
+        ipv4_address: 172.16.111.10
+
+  event_tagger_dygi:
+    image: ern_services_event_tagger_dygi:latest
+    build:
+      context: dygi_service
+    deploy:
+      resources:
+        limits:
+          cpus: "6"
+          memory: 8G
+    networks:
+      backend_network:
+        ipv4_address: 172.16.111.11
+    volumes:
+      - ./dygi_service/:/app/
+      - ../volumes/dygi_crontabs:/var/spool/cron/crontabs/
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - ./dygi_service/dygi_service.env
+
+  dygi_handler:
+    image: ern_services_dygi_handler:latest
+    build:
+      context: dygi_handler_service
+    depends_on:
+      - rabbit
+    networks:
+      backend_network:
+        ipv4_address: 172.16.111.12
+    volumes:
+      - ./dygi_handler_service/:/app/
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - ./dygi_handler_service/dygi_handler.env
+
+  api_gateway:
+    image: ern_services_api_gateway:latest
+    build:
+      context: api_gateway_service
+    depends_on:
+      - rabbit
+    ports:
+      - 8002:8080
+    networks:
+      backend_network:
+        ipv4_address: 172.16.111.13
+    volumes:
+      - ./api_gateway_service/:/app/
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - ./api_gateway_service/api_gateway.env
+
+networks:
+
+  backend_network:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+          - subnet: 172.16.111.0/24
